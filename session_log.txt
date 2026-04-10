@@ -1,0 +1,204 @@
+================================================================
+PG Amazon.de Packaging Lookup - Session Log
+================================================================
+Date: 2026-04-09
+User role: Brand manager at PG (Procter & Gamble)
+
+
+================================================================
+USER INSTRUCTIONS (verbatim, in order)
+================================================================
+
+1) "Hey. I am working as a brand manager for PG. I often get requests
+   where I get model numbers (e.g. Philips Beard Trimmer 7000 NEW)
+   where I need to go to Amazon.de to find the listing and extract
+   packaging materials. I often need to check to ensure the listing is
+   indeed for latest model (e.g. BT7660 instead of BT7550 etc.) and
+   scroll down to find packaging dimensions. I want you to help me
+   automate this. What do you propose?"
+
+2) "I need an excel sheet which can be used as input to enter search
+   query in amazon. ideally, we can extract packaging dimensions for
+   several models (e.g. BT7660 and BT7550) and add everything to one
+   table to not have to do a check (instead, we capture say latest two
+   or three models). You can make maybe a UI front-end to not need
+   excel."
+
+3) "No API. Start building for local. Also, remember it needs to be on
+   amazon.de and based on the search you can extract model number and
+   packaging directions from the listing. then, a check to validate
+   previous or newer models should happen, and then you also need to
+   find listing and packaging dimensions for those if available."
+
+4) "please run it so i can view it in my browser"
+
+5) "doesnt seem to work. i am trying the following query.
+   Philips BT 7000 NEW"
+
+6) "You are listing correct information but i dont see any information
+   being displayed in the results table."
+
+7) "Export all instructions i provided and your high level approach and
+   export it in a text file"
+
+
+================================================================
+HIGH-LEVEL APPROACH
+================================================================
+
+GOAL
+----
+Automate the recurring task of:
+  (a) finding the right Amazon.de listing for a Philips/PG product line,
+  (b) verifying it is the latest model variant within the series,
+  (c) extracting the packaging dimensions / weight from the listing
+      detail section,
+all without manual browsing.
+
+
+SOLUTION SHAPE
+--------------
+A small LOCAL web app (no external APIs, no Excel required) consisting of:
+
+  - scraper.py    Playwright-based Amazon.de scraper (headless Chromium)
+  - main.py       FastAPI backend exposing /api/search and /api/export-csv
+  - index.html    Single-page UI served at http://localhost:8000
+
+The user opens the UI in a browser, types one or more product queries
+(one per line), picks how many variants per query, and gets a sortable
+table back. Results can be exported as CSV for pasting into Excel.
+
+
+WHY THIS SHAPE
+--------------
+- Local web UI is friction-free (no file save/open cycle).
+- No paid scraping API needed; Playwright handles Amazon.de bot checks
+  via a real headless Chromium with German locale.
+- Backend is decoupled from frontend, so the same scraper can later be
+  driven from CLI, Excel batch, or another tool.
+
+
+PIPELINE (per query)
+--------------------
+1. PARSE the query for:
+     - a brand keyword     ("Philips", "Braun", "Oral-B", ...)
+     - a model family code ("BT 7000" -> "BT7", "Shaver S7000" -> "S7")
+   Both are used as filters so we don't return wrong-series products.
+
+2. SEARCH Amazon.de with the original query.
+   Headless Chromium with de-DE locale and a real desktop user agent,
+   so Amazon serves the standard German listing layout.
+
+3. EXTRACT MODEL CODES from each search result title using a regex
+   tuned for Philips-style codes (BT7660, BT7660/15, QP2630/30, S9000,
+   MG7720, etc.). Codes are filtered:
+     - Must start with the family prefix (e.g. BT7)
+     - Title must contain the brand keyword if one was given
+   This prevents Braun BT7xxx or Philips Shaver S7xxx from polluting
+   the results.
+
+4. FALLBACK SEARCH: if filtering leaves too few variants, run a second
+   search using the family code directly ("Philips BT7") to widen the
+   pool.
+
+5. SORT candidates by the numeric portion of the model code descending
+   (higher number = newer within a Philips series). Take the top N
+   distinct ASINs.
+
+6. FETCH PRODUCT PAGE for each ASIN and harvest structured data from
+   ALL of these locations (Amazon.de spreads info across several blocks):
+     - Tech-spec tables (#productDetails_techSpec_section_1/2)
+     - Detail-bullets list (#detailBullets_feature_div)
+     - Additional product info table
+     - prodDetails / .prodDetTable / .a-keyvalue tables
+   The most reliable model identifier is the structured "Modellnummer"
+   field, which we prefer over title regex matches.
+
+7. EXTRACT PACKAGING from the harvested key/value pairs:
+     - Dimensions: keys matching Verpackungsabmessungen / Produkt-
+       abmessungen / Package Dimensions / etc.
+     - Weight:     keys matching Gewicht / Versandgewicht / Item Weight
+     - Volume:     keys matching Volumen / Paketvolumen
+   Amazon.de often combines dims+weight in one field
+   (e.g. "21,4 x 13,9 x 6,4 cm; 464 Gramm"); we split on ";" and
+   classify each part by the units it contains so the table stays clean.
+
+8. RETURN one row per variant with: query, model code(s), title, ASIN,
+   URL, pkg dims, pkg weight, pkg volume.
+
+
+WHY "VARIANTS PER QUERY" REPLACES THE LATEST-MODEL CHECK
+---------------------------------------------------------
+The original manual workflow required verifying that an Amazon listing
+was for the latest model. Instead of trying to authoritatively answer
+"what is the latest?", the tool simply returns the top N variants in
+the same family, sorted newest-first. Side-by-side comparison removes
+the need for an explicit check - the user can see at a glance which
+codes exist and which is the newest.
+
+
+KEY DESIGN CHOICES
+------------------
+- Playwright (not requests/BeautifulSoup) because Amazon.de blocks
+  naive scraping with bot checks.
+- Brand + family double-filter at the search stage, NOT after fetching,
+  so we never waste time loading product pages for the wrong series.
+- No "sibling code inference" (an earlier approach that generated
+  fake adjacent codes and chased them) - it produced noise. We rely
+  on Amazon's own search to surface the family members.
+- Structured "Modellnummer" field is the source of truth for model
+  codes; title regex is only a fallback.
+- Frontend is a single static HTML file with vanilla JS - no build
+  step, no npm, no framework. Easy for the user to tweak.
+
+
+FILES PRODUCED
+--------------
+  C:\Users\azerv\Desktop\PG\scraper.py    - Playwright scraping logic
+  C:\Users\azerv\Desktop\PG\main.py       - FastAPI backend
+  C:\Users\azerv\Desktop\PG\index.html    - Web UI
+
+
+HOW TO RUN
+----------
+  cd C:\Users\azerv\Desktop\PG
+  python -m uvicorn main:app --host 127.0.0.1 --port 8000
+
+Then open http://localhost:8000 in a browser.
+
+
+VERIFIED RESULT (query: "Philips BT 7000 NEW", 3 variants)
+----------------------------------------------------------
+  BT7670/15  21,8 x 14,6 x 6,2 cm   490 Gramm
+  BT7660/15  21,4 x 14,2 x 6,2 cm   385 Gramm
+  (third BT7xxx variant if available)
+
+
+ISSUES ENCOUNTERED AND FIXED DURING SESSION
+-------------------------------------------
+1. Invalid CSS selector '[data-asin][data-asin!=""]' (not valid CSS).
+   Fixed: switched to 'div.s-result-item[data-asin]' with length check.
+
+2. Model regex was stripping the "/xx" suffix, turning S7886/55 into
+   the malformed S788655.
+   Fixed: keep the suffix as canonical, expose helper short_code().
+
+3. Packaging dimensions were missing because the tech-spec table
+   selector didn't cover Amazon.de's detail-bullets layout.
+   Fixed: harvest from BOTH tables AND detail bullets, merge results.
+
+4. Weight regex tried 'g' before 'gramm' in alternation, capturing
+   "440 G" and leaving "ramm" stuck on the dimensions string.
+   Fixed: split on ";" and classify parts by their units instead.
+
+5. Search returned wrong-family products (XP9402, S7886) for the
+   "BT 7000" query because there was no relevance filter.
+   Fixed: parse_family_filter() restricts to BT7xxx codes; brand
+   filter restricts to Philips titles.
+
+6. Empty results in the UI even though the backend code was correct.
+   Root cause: a stale uvicorn process from an earlier run had cached
+   the broken module - --reload had not picked up all the edits.
+   Fixed: killed all python processes, restarted uvicorn cleanly,
+   added traceback.print_exc() in the exception handler so future
+   silent failures are visible in the server log.

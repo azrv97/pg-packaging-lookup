@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PG · Amazon.de Packaging Lookup</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card: #fff;
+    --border: #ddd;
+    --accent: #0066c0;
+    --accent-h: #004a99;
+    --text: #111;
+    --muted: #666;
+    --success: #067340;
+    --warn: #b55900;
+    --err: #c00;
+    --row-alt: #f9fbff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .3px; }
+  header span { font-size: .85rem; opacity: .8; }
+
+  main { max-width: 1100px; margin: 28px auto; padding: 0 20px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; }
+
+  label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); display: block; margin-bottom: 6px; }
+
+  textarea {
+    width: 100%; min-height: 100px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: .95rem; font-family: inherit; resize: vertical;
+    transition: border-color .15s;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+
+  .row { display: flex; gap: 16px; align-items: flex-end; margin-top: 14px; flex-wrap: wrap; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { margin-bottom: 0; }
+  select, input[type=number] {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: .95rem; font-family: inherit; background: #fff;
+  }
+
+  button {
+    padding: 9px 22px; border: none; border-radius: 6px;
+    font-size: .95rem; font-weight: 600; cursor: pointer; transition: background .15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-secondary { background: #e8e8e8; color: var(--text); }
+  .btn-secondary:hover:not(:disabled) { background: #ddd; }
+
+  #status { font-size: .88rem; color: var(--muted); margin-top: 8px; min-height: 20px; }
+  #status.running { color: var(--accent); }
+  #status.error { color: var(--err); }
+
+  /* Results table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th {
+    background: #f0f4fa; text-align: left; padding: 8px 10px;
+    border-bottom: 2px solid var(--border); white-space: nowrap;
+    font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; color: var(--muted);
+    position: sticky; top: 0;
+  }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--row-alt); }
+
+  .model-badge {
+    display: inline-block; background: #ddeeff; color: #003a7a;
+    border-radius: 4px; padding: 2px 7px; font-weight: 700;
+    font-size: .8rem; margin: 1px 2px;
+  }
+  .dim { font-family: "Courier New", monospace; font-size: .85rem; }
+  .empty { color: var(--muted); font-style: italic; }
+  .err-row td { background: #fff5f5 !important; color: var(--err); }
+  .asin-link { color: var(--accent); text-decoration: none; font-size: .82rem; }
+  .asin-link:hover { text-decoration: underline; }
+
+  .query-sep td { background: #f0f4fa !important; font-weight: 700; font-size: .82rem;
+    text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: 5px 10px; }
+
+  .actions { display: flex; gap: 10px; align-items: center; }
+  #export-btn { display: none; }
+
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #bce; border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hint { font-size: .82rem; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+  <h1>Amazon.de Packaging Lookup</h1>
+  <span>PG Brand Management</span>
+</header>
+
+<main>
+  <div class="card">
+    <label for="queries">Search queries <span style="font-weight:400;text-transform:none">(one per line)</span></label>
+    <textarea id="queries" placeholder="Philips Beard Trimmer 7000&#10;Philips OneBlade Series 7000&#10;Oral-B iO Series 9"></textarea>
+    <p class="hint">Enter brand + product line. The tool will find the top variants and their packaging data.</p>
+
+    <div class="row">
+      <div class="field">
+        <label for="variants">Variants per query</label>
+        <input type="number" id="variants" value="3" min="1" max="8" style="width:80px" />
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="search-btn" onclick="runSearch()">Search Amazon.de</button>
+        <button class="btn-secondary" id="export-btn" onclick="exportExcel()">Export to Excel</button>
+      </div>
+    </div>
+    <p id="status"></p>
+  </div>
+
+  <div class="card" id="results-card" style="display:none">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
+      <strong id="results-title">Results</strong>
+    </div>
+    <div class="table-wrap">
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th>Query</th>
+            <th>Model Code(s)</th>
+            <th>Product Title</th>
+            <th>ASIN</th>
+            <th>Pkg Dimensions</th>
+            <th>Pkg Weight</th>
+            <th>Pkg Volume</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+let lastData = [];
+
+function setStatus(msg, cls = "") {
+  const el = document.getElementById("status");
+  el.className = cls;
+  el.innerHTML = msg;
+}
+
+function setLoading(on) {
+  const btn = document.getElementById("search-btn");
+  btn.disabled = on;
+  btn.textContent = on ? "Searching…" : "Search Amazon.de";
+  if (on) setStatus('<span class="spinner"></span>Launching browser and searching Amazon.de — this takes ~30–60 seconds…', "running");
+}
+
+async function runSearch() {
+  const queries = document.getElementById("queries").value
+    .split("\n").map(q => q.trim()).filter(Boolean);
+  if (!queries.length) { setStatus("Enter at least one query.", "error"); return; }
+
+  const maxVariants = parseInt(document.getElementById("variants").value) || 3;
+  setLoading(true);
+  document.getElementById("results-card").style.display = "none";
+  document.getElementById("export-btn").style.display = "none";
+
+  try {
+    const res = await fetch("/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queries, max_variants: maxVariants }),
+    });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    lastData = data;
+    renderTable(data, queries);
+    setStatus(`Done — ${data.length} variant(s) found.`);
+    document.getElementById("export-btn").style.display = "";
+  } catch (e) {
+    setStatus("Error: " + e.message, "error");
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderTable(data, queries) {
+  const tbody = document.getElementById("results-body");
+  tbody.innerHTML = "";
+
+  // Group by query so we can insert separator rows
+  const grouped = {};
+  for (const q of queries) grouped[q] = [];
+  for (const row of data) {
+    const q = row.query || "";
+    if (!grouped[q]) grouped[q] = [];
+    grouped[q].push(row);
+  }
+
+  for (const [query, rows] of Object.entries(grouped)) {
+    // Separator
+    const sep = document.createElement("tr");
+    sep.className = "query-sep";
+    sep.innerHTML = `<td colspan="7">${escHtml(query)}</td>`;
+    tbody.appendChild(sep);
+
+    if (rows.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="7" class="empty">No results found.</td>`;
+      tbody.appendChild(tr);
+      continue;
+    }
+
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      if (row.error) {
+        tr.className = "err-row";
+        tr.innerHTML = `<td></td><td colspan="6">Error: ${escHtml(row.error)}</td>`;
+      } else {
+        const models = (row.model_codes || []).map(c =>
+          `<span class="model-badge">${escHtml(c)}</span>`).join(" ") || '<span class="empty">—</span>';
+        const asinLink = row.asin
+          ? `<a class="asin-link" href="${escHtml(row.url)}" target="_blank">${escHtml(row.asin)}</a>`
+          : '<span class="empty">—</span>';
+        tr.innerHTML = `
+          <td></td>
+          <td>${models}</td>
+          <td>${escHtml(row.title || "—")}</td>
+          <td>${asinLink}</td>
+          <td class="dim">${escHtml(row.pkg_dims || "—")}</td>
+          <td class="dim">${escHtml(row.pkg_weight || "—")}</td>
+          <td class="dim">${escHtml(row.pkg_volume || "—")}</td>
+        `;
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  document.getElementById("results-card").style.display = "";
+  document.getElementById("results-title").textContent = `Results (${data.length} variant${data.length !== 1 ? "s" : ""})`;
+}
+
+async function exportExcel() {
+  if (!lastData.length) return;
+  const res = await fetch("/api/export-excel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(lastData),
+  });
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "packaging_data.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+</script>
+</body>
+</html>

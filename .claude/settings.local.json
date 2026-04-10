@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip --version)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m playwright install chromium)",
+      "Bash(python:*)",
+      "Bash(uvicorn main:app --reload)",
+      "Bash(curl -s -X POST http://localhost:8000/api/search -H \"Content-Type: application/json\" -d \"{\\\\\"queries\\\\\":[\\\\\"Philips BT 7000\\\\\"],\\\\\"max_variants\\\\\":2}\")",
+      "Bash(jobs)",
+      "Bash(kill %1)",
+      "Bash(kill %2)",
+      "Bash(powershell:*)",
+      "Bash(echo \"Server PID: $!\")",
+      "Bash(curl -s http://127.0.0.1:8000/ -o /dev/null -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(curl:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
