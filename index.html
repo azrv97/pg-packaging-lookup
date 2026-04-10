@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>PG · Amazon.de Packaging Lookup</title>
+<title>PG · Amazon Packaging Lookup</title>
 <style>
   :root {
     --bg: #f5f5f5;
@@ -17,6 +17,9 @@
     --warn: #b55900;
     --err: #c00;
     --row-alt: #f9fbff;
+    --sidebar-w: 280px;
+    --green: #067340;
+    --red: #c00;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -32,19 +35,116 @@
   header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .3px; }
   header span { font-size: .85rem; opacity: .8; }
 
-  main { max-width: 1100px; margin: 28px auto; padding: 0 20px; }
+  .app-layout { display: flex; min-height: calc(100vh - 52px); }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: width .2s;
+    overflow: hidden;
+  }
+  .sidebar.collapsed { width: 0; border-right: none; }
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header strong { font-size: .85rem; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+  .sidebar-toggle {
+    position: fixed;
+    left: 0;
+    top: 60px;
+    z-index: 100;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 0 6px 6px 0;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: .75rem;
+    line-height: 1;
+  }
+  .sidebar-toggle:hover { background: var(--accent-h); }
+  .history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .history-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background .1s;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .history-item:hover { background: #f0f4fa; }
+  .history-item .hi-text { flex: 1; min-width: 0; }
+  .history-item .hi-query {
+    font-size: .82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+  .history-item .hi-time { font-size: .72rem; color: var(--muted); }
+  .history-item .hi-star {
+    flex-shrink: 0;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #ccc;
+    background: none;
+    border: none;
+    padding: 0;
+    line-height: 1;
+  }
+  .history-item .hi-star.pinned { color: #f5a623; }
+  .history-item .hi-star:hover { color: #f5a623; }
+  .history-clear {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .history-clear button {
+    font-size: .78rem;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  /* Main content */
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    max-width: 1200px;
+    margin: 28px auto;
+    padding: 0 20px;
+    width: 100%;
+  }
 
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; }
 
   label { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); display: block; margin-bottom: 6px; }
 
   textarea {
-    width: 100%; min-height: 100px; padding: 10px 12px;
+    width: 100%; padding: 10px 12px;
     border: 1px solid var(--border); border-radius: 6px;
     font-size: .95rem; font-family: inherit; resize: vertical;
     transition: border-color .15s;
   }
   textarea:focus { outline: none; border-color: var(--accent); }
+  #queries { min-height: 70px; }
+  #queries-batch { min-height: 160px; }
 
   .row { display: flex; gap: 16px; align-items: flex-end; margin-top: 14px; flex-wrap: wrap; }
 
@@ -65,18 +165,70 @@
   .btn-secondary { background: #e8e8e8; color: var(--text); }
   .btn-secondary:hover:not(:disabled) { background: #ddd; }
 
+  /* Mode tabs */
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 2px solid var(--border);
+  }
+  .mode-tab {
+    padding: 8px 20px;
+    font-size: .88rem;
+    font-weight: 600;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color .15s, border-color .15s;
+  }
+  .mode-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .mode-tab:hover { color: var(--accent); }
+
   #status { font-size: .88rem; color: var(--muted); margin-top: 8px; min-height: 20px; }
   #status.running { color: var(--accent); }
   #status.error { color: var(--err); }
 
+  /* Skeleton loading */
+  .skeleton-wrap { display: none; }
+  .skeleton-wrap.active { display: block; }
+  .skeleton-row {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .skeleton-cell {
+    height: 16px;
+    background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+  .skeleton-cell:nth-child(1) { width: 50px; height: 50px; border-radius: 6px; }
+  .skeleton-cell:nth-child(2) { width: 80px; }
+  .skeleton-cell:nth-child(3) { flex: 1; }
+  .skeleton-cell:nth-child(4) { width: 100px; }
+  .skeleton-cell:nth-child(5) { width: 120px; }
+  .skeleton-cell:nth-child(6) { width: 80px; }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
   /* Results table */
   .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
   th {
     background: #f0f4fa; text-align: left; padding: 8px 10px;
     border-bottom: 2px solid var(--border); white-space: nowrap;
-    font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; color: var(--muted);
-    position: sticky; top: 0;
+    font-size: .75rem; text-transform: uppercase; letter-spacing: .4px; color: var(--muted);
+    position: sticky; top: 0; z-index: 2;
   }
   td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
   tr:nth-child(even) td { background: var(--row-alt); }
@@ -84,9 +236,9 @@
   .model-badge {
     display: inline-block; background: #ddeeff; color: #003a7a;
     border-radius: 4px; padding: 2px 7px; font-weight: 700;
-    font-size: .8rem; margin: 1px 2px;
+    font-size: .78rem; margin: 1px 2px;
   }
-  .dim { font-family: "Courier New", monospace; font-size: .85rem; }
+  .dim { font-family: "Courier New", monospace; font-size: .82rem; }
   .empty { color: var(--muted); font-style: italic; }
   .err-row td { background: #fff5f5 !important; color: var(--err); }
   .asin-link { color: var(--accent); text-decoration: none; font-size: .82rem; }
@@ -95,7 +247,7 @@
   .query-sep td { background: #f0f4fa !important; font-weight: 700; font-size: .82rem;
     text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: 5px 10px; }
 
-  .actions { display: flex; gap: 10px; align-items: center; }
+  .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   #export-btn { display: none; }
 
   .spinner {
@@ -107,62 +259,283 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .hint { font-size: .82rem; color: var(--muted); margin-top: 6px; }
+
+  /* Thumbnail */
+  .thumb { width: 60px; height: 60px; object-fit: contain; border-radius: 4px; cursor: pointer; background: #fafafa; border: 1px solid #eee; }
+  .thumb-placeholder { width: 60px; height: 60px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #ccc; font-size: .7rem; }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.3);
+    background: #fff;
+  }
+
+  /* Comparison badge */
+  .vs-badge {
+    display: inline-block;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+  .vs-badge.better { background: #e6f7ee; color: var(--green); }
+  .vs-badge.worse { background: #ffeaea; color: var(--red); }
+  .vs-badge.neutral { background: #f0f0f0; color: var(--muted); }
+
+  .compare-delta {
+    font-size: .72rem;
+    font-weight: 600;
+    margin-left: 4px;
+  }
+  .delta-green { color: var(--green); }
+  .delta-red { color: var(--red); }
+
+  /* Extra columns toggle */
+  .col-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: .8rem;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    margin-left: 12px;
+  }
+  .col-toggle input { margin: 0; }
+  .extra-col { display: none; }
+  .extra-col.visible { display: table-cell; }
+
+  /* Results header bar */
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .results-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* Compare toggle */
+  .toggle-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .82rem;
+    color: var(--muted);
+  }
+  .toggle-switch {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    background: #ccc;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s;
+  }
+  .toggle-switch.on::after { transform: translateX(16px); }
+
+  /* Copy toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #333;
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: .88rem;
+    opacity: 0;
+    transition: all .3s;
+    z-index: 2000;
+    pointer-events: none;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  @media (max-width: 768px) {
+    .sidebar { position: fixed; z-index: 50; height: calc(100vh - 52px); top: 52px; }
+    .sidebar.collapsed { width: 0; }
+    .main-content { padding: 0 12px; margin: 16px auto; }
+    header { padding: 12px 16px; }
+    .mode-tabs { overflow-x: auto; }
+    .results-header { flex-direction: column; align-items: flex-start; }
+  }
 </style>
 </head>
 <body>
 
 <header>
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-  <h1>Amazon.de Packaging Lookup</h1>
+  <h1>Amazon Packaging Lookup</h1>
   <span>PG Brand Management</span>
 </header>
 
-<main>
-  <div class="card">
-    <label for="queries">Search queries <span style="font-weight:400;text-transform:none">(one per line)</span></label>
-    <textarea id="queries" placeholder="Philips Beard Trimmer 7000&#10;Philips OneBlade Series 7000&#10;Oral-B iO Series 9"></textarea>
-    <p class="hint">Enter brand + product line. The tool will find the top variants and their packaging data.</p>
+<div class="app-layout">
+  <!-- Sidebar: Search history -->
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle history panel">&#9776;</button>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <strong>Recent Searches</strong>
+    </div>
+    <div class="history-list" id="history-list"></div>
+    <div class="history-clear">
+      <button onclick="clearHistory()">Clear unpinned</button>
+    </div>
+  </aside>
 
-    <div class="row">
-      <div class="field">
-        <label for="variants">Variants per query</label>
-        <input type="number" id="variants" value="3" min="1" max="8" style="width:80px" />
+  <div class="main-content">
+    <div class="card">
+      <!-- Mode tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="single" onclick="switchMode('single')">Single Query</button>
+        <button class="mode-tab" data-mode="batch" onclick="switchMode('batch')">Batch Mode</button>
       </div>
-      <div class="actions">
-        <button class="btn-primary" id="search-btn" onclick="runSearch()">Search Amazon.de</button>
-        <button class="btn-secondary" id="export-btn" onclick="exportExcel()">Export to Excel</button>
-      </div>
-    </div>
-    <p id="status"></p>
-  </div>
 
-  <div class="card" id="results-card" style="display:none">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
-      <strong id="results-title">Results</strong>
-      <button class="btn-primary" onclick="exportExcel()" style="font-size:.85rem; padding:7px 18px;">Export to Excel</button>
+      <!-- Single mode -->
+      <div id="mode-single">
+        <label for="queries">Search query</label>
+        <textarea id="queries" rows="2" placeholder="Philips Beard Trimmer 7000"></textarea>
+        <p class="hint">Enter brand + product line. The tool will find the top variants and their packaging data.</p>
+      </div>
+
+      <!-- Batch mode -->
+      <div id="mode-batch" style="display:none">
+        <label for="queries-batch">Search queries <span style="font-weight:400;text-transform:none">(one per line)</span></label>
+        <textarea id="queries-batch" placeholder="Philips Beard Trimmer 7000&#10;Philips OneBlade Series 7000&#10;Oral-B iO Series 9&#10;Braun Series 9 Pro"></textarea>
+        <p class="hint">Enter one query per line. All results will appear in a combined table grouped by query.</p>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="variants">Variants per query</label>
+          <input type="number" id="variants" value="3" min="1" max="8" style="width:80px" />
+        </div>
+        <div class="field">
+          <label for="marketplace">Marketplace</label>
+          <select id="marketplace">
+            <option value="amazon.de" selected>amazon.de</option>
+            <option value="amazon.fr">amazon.fr</option>
+            <option value="amazon.nl">amazon.nl</option>
+            <option value="amazon.it">amazon.it</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button class="btn-primary" id="search-btn" onclick="runSearch()">Search</button>
+          <button class="btn-secondary" id="export-btn" onclick="exportExcel()">Export to Excel</button>
+        </div>
+      </div>
+      <p id="status"></p>
     </div>
-    <div class="table-wrap">
-      <table id="results-table">
-        <thead>
-          <tr>
-            <th>Query</th>
-            <th>Model Code(s)</th>
-            <th>Product Title</th>
-            <th>ASIN</th>
-            <th>Pkg Dimensions</th>
-            <th>Pkg Weight</th>
-            <th>Pkg Volume</th>
-          </tr>
-        </thead>
-        <tbody id="results-body"></tbody>
-      </table>
+
+    <!-- Skeleton loading -->
+    <div class="card skeleton-wrap" id="skeleton">
+      <div style="margin-bottom:10px"><strong style="color:var(--muted);font-size:.85rem">Loading results...</strong></div>
+      <div class="skeleton-row"><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div></div>
+      <div class="skeleton-row"><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div></div>
+      <div class="skeleton-row"><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div></div>
+      <div class="skeleton-row"><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div></div>
+      <div class="skeleton-row"><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div><div class="skeleton-cell"></div></div>
+    </div>
+
+    <!-- Results -->
+    <div class="card" id="results-card" style="display:none">
+      <div class="results-header">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <strong id="results-title">Results</strong>
+          <div class="toggle-wrap">
+            <span>Compare</span>
+            <div class="toggle-switch" id="compare-toggle" onclick="toggleCompare()" title="Highlight differences between variants"></div>
+          </div>
+          <label class="col-toggle"><input type="checkbox" id="extra-cols-toggle" onchange="toggleExtraCols()"> More details</label>
+        </div>
+        <div class="results-actions">
+          <button class="btn-secondary" onclick="copyTable()" style="font-size:.82rem;padding:6px 14px" title="Copy as tab-separated text">Copy table</button>
+          <button class="btn-primary" onclick="exportExcel()" style="font-size:.85rem; padding:7px 18px;">Export to Excel</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="results-table">
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Query</th>
+              <th>Model Code(s)</th>
+              <th>Product Title</th>
+              <th>ASIN</th>
+              <th>Price</th>
+              <th>Pkg Dimensions</th>
+              <th>Pkg Weight</th>
+              <th>Pkg Volume</th>
+              <th class="extra-col">EAN/GTIN</th>
+              <th class="extra-col">Components</th>
+            </tr>
+          </thead>
+          <tbody id="results-body"></tbody>
+        </table>
+      </div>
     </div>
   </div>
-</main>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="Product image" />
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
 
 <script>
 let lastData = [];
+let lastQueries = [];
+let currentMode = "single";
+let compareOn = false;
+const TOTAL_COLS = 11;
 
+/* ── Sidebar toggle ── */
+function toggleSidebar() {
+  document.getElementById("sidebar").classList.toggle("collapsed");
+}
+
+/* ── Mode switching ── */
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll(".mode-tab").forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+  document.getElementById("mode-single").style.display = mode === "single" ? "" : "none";
+  document.getElementById("mode-batch").style.display = mode === "batch" ? "" : "none";
+}
+
+/* ── Status helpers ── */
 function setStatus(msg, cls = "") {
   const el = document.getElementById("status");
   el.className = cls;
@@ -171,17 +544,30 @@ function setStatus(msg, cls = "") {
 
 function setLoading(on) {
   const btn = document.getElementById("search-btn");
+  const mp = document.getElementById("marketplace").value;
   btn.disabled = on;
-  btn.textContent = on ? "Searching…" : "Search Amazon.de";
-  if (on) setStatus('<span class="spinner"></span>Launching browser and searching Amazon.de — this takes ~30–60 seconds…', "running");
+  btn.textContent = on ? "Searching..." : "Search";
+  const skel = document.getElementById("skeleton");
+  if (on) {
+    setStatus('<span class="spinner"></span>Launching browser and searching ' + escHtml(mp) + ' — this takes ~30-60 seconds...', "running");
+    skel.classList.add("active");
+  } else {
+    skel.classList.remove("active");
+  }
 }
 
+/* ── Search ── */
 async function runSearch() {
-  const queries = document.getElementById("queries").value
-    .split("\n").map(q => q.trim()).filter(Boolean);
+  let queries;
+  if (currentMode === "batch") {
+    queries = document.getElementById("queries-batch").value.split("\n").map(q => q.trim()).filter(Boolean);
+  } else {
+    queries = document.getElementById("queries").value.split("\n").map(q => q.trim()).filter(Boolean);
+  }
   if (!queries.length) { setStatus("Enter at least one query.", "error"); return; }
 
   const maxVariants = parseInt(document.getElementById("variants").value) || 3;
+  const marketplace = document.getElementById("marketplace").value;
   setLoading(true);
   document.getElementById("results-card").style.display = "none";
   document.getElementById("export-btn").style.display = "none";
@@ -190,14 +576,16 @@ async function runSearch() {
     const res = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ queries, max_variants: maxVariants }),
+      body: JSON.stringify({ queries, max_variants: maxVariants, marketplace }),
     });
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    if (!res.ok) throw new Error("Server error " + res.status);
     const data = await res.json();
     lastData = data;
+    lastQueries = queries;
     renderTable(data, queries);
-    setStatus(`Done — ${data.length} variant(s) found.`);
+    setStatus("Done — " + data.length + " variant(s) found.");
     document.getElementById("export-btn").style.display = "";
+    addToHistory(queries);
   } catch (e) {
     setStatus("Error: " + e.message, "error");
   } finally {
@@ -205,11 +593,57 @@ async function runSearch() {
   }
 }
 
+/* ── Comparison helpers ── */
+function parseNumeric(str) {
+  if (!str || str === "—") return null;
+  // Try to extract a number (handles "1.2 kg", "12.3 x 4.5 x 6.7 cm", "€19.99", etc.)
+  const m = String(str).replace(",", ".").match(/[\d.]+/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+function computeVolume(str) {
+  if (!str || str === "—") return null;
+  const nums = String(str).replace(/,/g, ".").match(/[\d.]+/g);
+  if (!nums || nums.length < 3) return null;
+  return parseFloat(nums[0]) * parseFloat(nums[1]) * parseFloat(nums[2]);
+}
+
+function deltaHtml(prev, curr, field) {
+  let prevN, currN;
+  if (field === "pkg_dims") {
+    prevN = computeVolume(prev);
+    currN = computeVolume(curr);
+  } else {
+    prevN = parseNumeric(prev);
+    currN = parseNumeric(curr);
+  }
+  if (prevN === null || currN === null || prevN === 0) return "";
+  const pct = ((currN - prevN) / prevN * 100).toFixed(1);
+  if (Math.abs(pct) < 0.1) return '<span class="vs-badge neutral">0%</span>';
+  const better = currN < prevN; // smaller is better for dims/weight
+  const cls = field === "price" ? (currN < prevN ? "better" : "worse") : (better ? "better" : "worse");
+  const sign = pct > 0 ? "+" : "";
+  return '<span class="vs-badge ' + cls + '">' + sign + pct + '%</span>';
+}
+
+function toggleCompare() {
+  compareOn = !compareOn;
+  document.getElementById("compare-toggle").classList.toggle("on", compareOn);
+  if (lastData.length) renderTable(lastData, lastQueries);
+}
+
+/* ── Extra columns toggle ── */
+function toggleExtraCols() {
+  const on = document.getElementById("extra-cols-toggle").checked;
+  document.querySelectorAll(".extra-col").forEach(el => el.classList.toggle("visible", on));
+}
+
+/* ── Render table ── */
 function renderTable(data, queries) {
   const tbody = document.getElementById("results-body");
   tbody.innerHTML = "";
+  const extraVisible = document.getElementById("extra-cols-toggle").checked;
 
-  // Group by query so we can insert separator rows
   const grouped = {};
   for (const q of queries) grouped[q] = [];
   for (const row of data) {
@@ -219,48 +653,92 @@ function renderTable(data, queries) {
   }
 
   for (const [query, rows] of Object.entries(grouped)) {
-    // Separator
     const sep = document.createElement("tr");
     sep.className = "query-sep";
-    sep.innerHTML = `<td colspan="7">${escHtml(query)}</td>`;
+    sep.innerHTML = '<td colspan="' + TOTAL_COLS + '">' + escHtml(query) + '</td>';
     tbody.appendChild(sep);
 
     if (rows.length === 0) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="7" class="empty">No results found.</td>`;
+      tr.innerHTML = '<td colspan="' + TOTAL_COLS + '" class="empty">No results found.</td>';
       tbody.appendChild(tr);
       continue;
     }
 
-    for (const row of rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
       const tr = document.createElement("tr");
       if (row.error) {
         tr.className = "err-row";
-        tr.innerHTML = `<td></td><td colspan="6">Error: ${escHtml(row.error)}</td>`;
+        tr.innerHTML = '<td></td><td colspan="' + (TOTAL_COLS - 1) + '">Error: ' + escHtml(row.error) + '</td>';
       } else {
         const models = (row.model_codes || []).map(c =>
-          `<span class="model-badge">${escHtml(c)}</span>`).join(" ") || '<span class="empty">—</span>';
+          '<span class="model-badge">' + escHtml(c) + '</span>').join(" ") || '<span class="empty">-</span>';
         const asinLink = row.asin
-          ? `<a class="asin-link" href="${escHtml(row.url)}" target="_blank">${escHtml(row.asin)}</a>`
-          : '<span class="empty">—</span>';
-        tr.innerHTML = `
-          <td></td>
-          <td>${models}</td>
-          <td>${escHtml(row.title || "—")}</td>
-          <td>${asinLink}</td>
-          <td class="dim">${escHtml(row.pkg_dims || "—")}</td>
-          <td class="dim">${escHtml(row.pkg_weight || "—")}</td>
-          <td class="dim">${escHtml(row.pkg_volume || "—")}</td>
-        `;
+          ? '<a class="asin-link" href="' + escHtml(row.details_url || row.url || "") + '" target="_blank">' + escHtml(row.asin) + '</a>'
+          : '<span class="empty">-</span>';
+
+        const imgHtml = row.image_url
+          ? '<img class="thumb" src="' + escHtml(row.image_url) + '" alt="" onclick="openLightbox(\'' + escHtml(row.image_url).replace(/'/g, "\\'") + '\')" loading="lazy">'
+          : '<div class="thumb-placeholder">No img</div>';
+
+        const priceHtml = row.price ? escHtml(row.price) : '<span class="empty">-</span>';
+        const eanHtml = row.ean_gtin ? escHtml(row.ean_gtin) : '<span class="empty">-</span>';
+        const compHtml = row.components ? escHtml(row.components) : '<span class="empty">-</span>';
+        const ecCls = "extra-col" + (extraVisible ? " visible" : "");
+
+        // Comparison deltas
+        let dimsDelta = "", weightDelta = "", volDelta = "", priceDelta = "";
+        if (compareOn && i > 0) {
+          const prev = rows[i - 1];
+          dimsDelta = deltaHtml(prev.pkg_dims, row.pkg_dims, "pkg_dims");
+          weightDelta = deltaHtml(prev.pkg_weight, row.pkg_weight, "pkg_weight");
+          volDelta = deltaHtml(prev.pkg_volume, row.pkg_volume, "pkg_volume");
+          priceDelta = deltaHtml(prev.price, row.price, "price");
+        }
+
+        tr.innerHTML =
+          '<td>' + imgHtml + '</td>' +
+          '<td></td>' +
+          '<td>' + models + '</td>' +
+          '<td>' + escHtml(row.title || "-") + '</td>' +
+          '<td>' + asinLink + '</td>' +
+          '<td class="dim">' + priceHtml + ' ' + priceDelta + '</td>' +
+          '<td class="dim">' + escHtml(row.pkg_dims || "-") + ' ' + dimsDelta + '</td>' +
+          '<td class="dim">' + escHtml(row.pkg_weight || "-") + ' ' + weightDelta + '</td>' +
+          '<td class="dim">' + escHtml(row.pkg_volume || "-") + ' ' + volDelta + '</td>' +
+          '<td class="' + ecCls + '">' + eanHtml + '</td>' +
+          '<td class="' + ecCls + '">' + compHtml + '</td>';
       }
       tbody.appendChild(tr);
+
+      // Insert "vs" comparison row between variants
+      if (compareOn && i < rows.length - 1 && !rows[i].error && !rows[i + 1].error) {
+        const vsRow = document.createElement("tr");
+        vsRow.style.cssText = "background:#fafbff;";
+        vsRow.innerHTML = '<td colspan="' + TOTAL_COLS + '" style="text-align:center;padding:2px 10px;border-bottom:none;">' +
+          '<span style="display:inline-block;background:#e8edf5;color:var(--muted);font-size:.7rem;font-weight:700;padding:1px 8px;border-radius:10px;">vs</span></td>';
+        tbody.appendChild(vsRow);
+      }
     }
   }
 
   document.getElementById("results-card").style.display = "";
-  document.getElementById("results-title").textContent = `Results (${data.length} variant${data.length !== 1 ? "s" : ""})`;
+  document.getElementById("results-title").textContent = "Results (" + data.length + " variant" + (data.length !== 1 ? "s" : "") + ")";
 }
 
+/* ── Lightbox ── */
+function openLightbox(src) {
+  document.getElementById("lightbox-img").src = src;
+  document.getElementById("lightbox").classList.add("open");
+}
+function closeLightbox() {
+  document.getElementById("lightbox").classList.remove("open");
+  document.getElementById("lightbox-img").src = "";
+}
+document.addEventListener("keydown", function(e) { if (e.key === "Escape") closeLightbox(); });
+
+/* ── Export ── */
 async function exportExcel() {
   if (!lastData.length) return;
   const res = await fetch("/api/export-excel", {
@@ -277,11 +755,148 @@ async function exportExcel() {
   URL.revokeObjectURL(url);
 }
 
+/* ── Copy table as TSV ── */
+function copyTable() {
+  if (!lastData.length) return;
+  const headers = ["Query", "Model Codes", "Title", "ASIN", "Price", "Pkg Dimensions", "Pkg Weight", "Pkg Volume", "EAN/GTIN", "Components", "Image URL"];
+  const lines = [headers.join("\t")];
+  for (const r of lastData) {
+    if (r.error) {
+      lines.push([r.query || "", "", "", "", "", "", "", "", "", "", ""].join("\t"));
+      continue;
+    }
+    lines.push([
+      r.query || "",
+      (r.model_codes || []).join(", "),
+      r.title || "",
+      r.asin || "",
+      r.price || "",
+      r.pkg_dims || "",
+      r.pkg_weight || "",
+      r.pkg_volume || "",
+      r.ean_gtin || "",
+      r.components || "",
+      r.image_url || ""
+    ].join("\t"));
+  }
+  navigator.clipboard.writeText(lines.join("\n")).then(function() {
+    showToast("Table copied to clipboard");
+  }).catch(function() {
+    showToast("Copy failed - check browser permissions");
+  });
+}
+
+/* ── Toast ── */
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(function() { t.classList.remove("show"); }, 2200);
+}
+
+/* ── Search History (localStorage) ── */
+const HISTORY_KEY = "pg_search_history";
+const MAX_HISTORY = 20;
+
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveHistory(items) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+}
+
+function addToHistory(queries) {
+  const text = queries.join("; ");
+  let hist = getHistory();
+  // Remove duplicate (same text)
+  hist = hist.filter(h => h.text !== text);
+  hist.unshift({ text, queries, time: Date.now(), pinned: false });
+  // Keep pinned + limit unpinned to MAX_HISTORY total
+  if (hist.length > MAX_HISTORY) {
+    const pinned = hist.filter(h => h.pinned);
+    const unpinned = hist.filter(h => !h.pinned);
+    hist = pinned.concat(unpinned.slice(0, MAX_HISTORY - pinned.length));
+  }
+  saveHistory(hist);
+  renderHistory();
+}
+
+function togglePin(idx) {
+  const hist = getHistory();
+  if (hist[idx]) {
+    hist[idx].pinned = !hist[idx].pinned;
+    saveHistory(hist);
+    renderHistory();
+  }
+}
+
+function rerunFromHistory(idx) {
+  const hist = getHistory();
+  const entry = hist[idx];
+  if (!entry) return;
+  const queries = entry.queries || entry.text.split("; ");
+  if (queries.length > 1) {
+    switchMode("batch");
+    document.getElementById("queries-batch").value = queries.join("\n");
+  } else {
+    switchMode("single");
+    document.getElementById("queries").value = queries[0] || "";
+  }
+  runSearch();
+}
+
+function clearHistory() {
+  const hist = getHistory().filter(h => h.pinned);
+  saveHistory(hist);
+  renderHistory();
+}
+
+function renderHistory() {
+  const list = document.getElementById("history-list");
+  const hist = getHistory();
+  if (!hist.length) {
+    list.innerHTML = '<div style="padding:20px 16px;text-align:center;color:var(--muted);font-size:.82rem;">No recent searches</div>';
+    return;
+  }
+  list.innerHTML = "";
+  hist.forEach(function(h, i) {
+    const el = document.createElement("div");
+    el.className = "history-item";
+    const ago = timeAgo(h.time);
+    el.innerHTML =
+      '<div class="hi-text" onclick="rerunFromHistory(' + i + ')">' +
+        '<div class="hi-query" title="' + escHtml(h.text) + '">' + escHtml(h.text) + '</div>' +
+        '<div class="hi-time">' + ago + '</div>' +
+      '</div>' +
+      '<button class="hi-star ' + (h.pinned ? "pinned" : "") + '" onclick="event.stopPropagation();togglePin(' + i + ')" title="' + (h.pinned ? "Unpin" : "Pin") + '">' +
+        (h.pinned ? "&#9733;" : "&#9734;") +
+      '</button>';
+    list.appendChild(el);
+  });
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return mins + "m ago";
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + "h ago";
+  const days = Math.floor(hrs / 24);
+  return days + "d ago";
+}
+
+/* ── Utility ── */
 function escHtml(str) {
   return String(str || "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+/* ── Init ── */
+renderHistory();
 </script>
 </body>
 </html>

@@ -16,7 +16,22 @@
       "Bash(curl -s http://127.0.0.1:8000/ -o /dev/null -w \"HTTP %{http_code}\\\\n\")",
       "Bash(curl:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(railway version:*)",
+      "Bash(where railway:*)",
+      "Bash(npm install:*)",
+      "Bash(RAILWAY_TOKEN=06c46a6f-2e86-4d36-9a5b-a3acac64ab96 railway whoami:*)",
+      "Bash(railway init:*)",
+      "Bash(railway list:*)",
+      "Bash(railway up:*)",
+      "Bash(railway domain:*)",
+      "Bash(railway deployment:*)",
+      "Bash(railway link:*)",
+      "Bash(railway logs:*)",
+      "Bash(git push:*)"
     ]
   }
 }

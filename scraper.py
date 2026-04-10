@@ -1,14 +1,22 @@
 """
-Amazon.de scraper for packaging dimensions.
+Amazon scraper for packaging dimensions.
 Uses Playwright (headless Chromium) to handle bot detection.
+Supports multiple marketplaces: de, fr, nl, it.
 """
 import asyncio
 import re
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
-# Regex patterns to extract model codes for common PG-managed brands
 # Match codes like BT7660, BT7660/15, QP2630/30, S9000, MG7720
 MODEL_PATTERN = r'\b([A-Z]{1,3}\d{3,5}(?:/\d{2})?)\b'
+
+# Marketplace TLD mapping
+MARKETPLACE_TLDS = {
+    "de": "de",
+    "fr": "fr",
+    "nl": "nl",
+    "it": "it",
+}
 
 def extract_model_codes(text: str) -> list[str]:
     """Extract model codes. Returns canonical (with /xx suffix) where present."""
@@ -70,9 +78,11 @@ def infer_related_models(model_code: str) -> list[str]:
     return sorted(candidates)
 
 
-async def amazon_search(page, query: str) -> list[dict]:
-    """Search Amazon.de and return top results with title, ASIN, URL."""
-    url = f"https://www.amazon.de/s?k={query.replace(' ', '+')}&language=de_DE"
+async def amazon_search(page, query: str, marketplace: str = "de") -> list[dict]:
+    """Search Amazon and return top results with title, ASIN, URL."""
+    tld = MARKETPLACE_TLDS.get(marketplace, "de")
+    base_url = f"https://www.amazon.{tld}"
+    url = f"{base_url}/s?k={query.replace(' ', '+')}"
     await page.goto(url, timeout=30000)
     await page.wait_for_timeout(2000)
 
@@ -89,12 +99,12 @@ async def amazon_search(page, query: str) -> list[dict]:
         results.append({
             "asin": asin,
             "title": title,
-            "url": f"https://www.amazon.de/dp/{asin}",
+            "url": f"{base_url}/dp/{asin}",
         })
     return results
 
 
-async def fetch_product_details(page, asin: str) -> dict:
+async def fetch_product_details(page, asin: str, marketplace: str = "de") -> dict:
     """
     Fetch a product page and extract:
     - Full title
@@ -102,8 +112,11 @@ async def fetch_product_details(page, asin: str) -> dict:
     - Packaging dimensions (from Produktinformationen table)
     - Package weight
     - Raw bullet points (for materials text)
+    - Price, main image URL, EAN/GTIN, included components
     """
-    url = f"https://www.amazon.de/dp/{asin}?language=de_DE"
+    tld = MARKETPLACE_TLDS.get(marketplace, "de")
+    base_url = f"https://www.amazon.{tld}"
+    url = f"{base_url}/dp/{asin}"
     try:
         await page.goto(url, timeout=30000)
         await page.wait_for_timeout(1500)
@@ -235,24 +248,74 @@ async def fetch_product_details(page, asin: str) -> dict:
         full_text = title + " " + " ".join(bullets)
         model_codes = extract_model_codes(full_text)[:3]
 
+    # ---- Price ----
+    price = ""
+    for sel in [
+        "#priceblock_ourprice",
+        "#priceblock_dealprice",
+        ".a-price .a-offscreen",
+        "span.a-price span.a-offscreen",
+        "#corePrice_feature_div .a-offscreen",
+        "#tp_price_block_total_price_ww .a-offscreen",
+    ]:
+        el = await page.query_selector(sel)
+        if el:
+            price = (await el.inner_text()).strip()
+            if price:
+                break
+
+    # ---- Main product image URL ----
+    image_url = ""
+    for sel in ["#landingImage", "#imgBlkFront", "#main-image"]:
+        el = await page.query_selector(sel)
+        if el:
+            image_url = (await el.get_attribute("src")) or ""
+            if image_url:
+                break
+
+    # ---- EAN / GTIN ----
+    ean_gtin = ""
+    ean_keys = ["EAN", "GTIN", "Global Trade Identification Number"]
+    for k, v in tech_details.items():
+        if any(ek.lower() == k.lower() for ek in ean_keys):
+            ean_gtin = v
+            break
+
+    # ---- Included Components ----
+    components = ""
+    comp_keys = ["Eingeschlossene Komponenten", "Included Components",
+                 "Composants inclus", "Componenti inclusi", "Meegeleverde componenten"]
+    for k, v in tech_details.items():
+        if any(ck.lower() == k.lower() for ck in comp_keys):
+            components = v
+            break
+
+    # ---- Deep link to product details section ----
+    details_url = f"{base_url}/dp/{asin}#productDetails"
+
     return {
         "asin": asin,
         "title": title,
-        "url": f"https://www.amazon.de/dp/{asin}",
+        "url": f"{base_url}/dp/{asin}",
+        "details_url": details_url,
         "model_codes": model_codes,
         "pkg_dims": pkg_dims,
         "pkg_weight": pkg_weight,
         "pkg_volume": pkg_volume,
+        "price": price,
+        "image_url": image_url,
+        "ean_gtin": ean_gtin,
+        "components": components,
         "bullets": bullets,
         "tech_details": tech_details,
     }
 
 
-async def run_search(query: str, max_variants: int = 3) -> list[dict]:
+async def run_search(query: str, max_variants: int = 3, marketplace: str = "de") -> list[dict]:
     """
     Main entry point.
     1. Parse the query for a model family prefix (e.g. "BT 7000" -> "BT7").
-    2. Search Amazon.de for the query.
+    2. Search Amazon for the query on the specified marketplace.
     3. Filter result titles to those containing a model code matching the family.
     4. If we don't have enough, do an additional search using the family code.
     5. Fetch product details for each candidate ASIN, sorted by model number desc.
@@ -285,7 +348,7 @@ async def run_search(query: str, max_variants: int = 3) -> list[dict]:
         candidates: dict[str, str] = {}
 
         async def gather(search_query: str):
-            results = await amazon_search(page, search_query)
+            results = await amazon_search(page, search_query, marketplace=marketplace)
             for r in results:
                 # Brand filter: title must contain the user's brand if specified
                 if brand_filter and brand_filter not in r["title"].lower():
@@ -321,7 +384,7 @@ async def run_search(query: str, max_variants: int = 3) -> list[dict]:
             if asin in seen_asins:
                 continue
             seen_asins.add(asin)
-            details = await fetch_product_details(page, asin)
+            details = await fetch_product_details(page, asin, marketplace=marketplace)
             rows.append(details)
             if len(rows) >= max_variants:
                 break
@@ -332,5 +395,5 @@ async def run_search(query: str, max_variants: int = 3) -> list[dict]:
 
 if __name__ == "__main__":
     import json
-    results = asyncio.run(run_search("Philips Beard Trimmer 7000", max_variants=3))
+    results = asyncio.run(run_search("Philips Beard Trimmer 7000", max_variants=3, marketplace="de"))
     print(json.dumps(results, indent=2, ensure_ascii=False))

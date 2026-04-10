@@ -7,7 +7,7 @@ import csv
 import traceback
 import asyncio
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
 from pydantic import BaseModel
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -19,6 +19,7 @@ app = FastAPI()
 class SearchRequest(BaseModel):
     queries: list[str]        # one or more product queries
     max_variants: int = 3     # how many model variants to capture per query
+    marketplace: str = "de"   # marketplace: de, fr, nl, it
 
 
 @app.post("/api/search")
@@ -26,7 +27,7 @@ async def search(req: SearchRequest):
     all_rows = []
     for query in req.queries:
         try:
-            rows = await run_search(query.strip(), max_variants=req.max_variants)
+            rows = await run_search(query.strip(), max_variants=req.max_variants, marketplace=req.marketplace)
             for r in rows:
                 r["query"] = query
             all_rows.extend(rows)
@@ -41,6 +42,11 @@ async def search(req: SearchRequest):
                 "pkg_dims": "",
                 "pkg_weight": "",
                 "pkg_volume": "",
+                "price": "",
+                "image_url": "",
+                "ean_gtin": "",
+                "components": "",
+                "details_url": "",
             })
     return JSONResponse(content=all_rows)
 
@@ -61,7 +67,8 @@ async def export_csv(queries: str, max_variants: int = 3):
 
     output = io.StringIO()
     fieldnames = ["query", "model_codes", "title", "asin", "url",
-                  "pkg_dims", "pkg_weight", "pkg_volume", "error"]
+                  "pkg_dims", "pkg_weight", "pkg_volume",
+                  "price", "image_url", "ean_gtin", "components", "details_url", "error"]
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in all_rows:
@@ -99,8 +106,9 @@ async def export_excel(req: Request):
     alt_fill = PatternFill(start_color="F5F8FF", end_color="F5F8FF", fill_type="solid")
 
     headers = ["Query", "Model Code(s)", "Product Title", "ASIN", "URL",
-               "Pkg Dimensions", "Pkg Weight", "Pkg Volume"]
-    col_widths = [25, 16, 50, 14, 40, 24, 16, 14]
+               "Pkg Dimensions", "Pkg Weight", "Pkg Volume",
+               "Price", "Image URL", "EAN/GTIN", "Components"]
+    col_widths = [25, 16, 50, 14, 40, 24, 16, 14, 14, 40, 18, 30]
 
     for col_idx, (h, w) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=1, column=col_idx, value=h)
@@ -110,7 +118,7 @@ async def export_excel(req: Request):
         cell.border = thin_border
         ws.column_dimensions[cell.column_letter].width = w
 
-    ws.auto_filter.ref = f"A1:H1"
+    ws.auto_filter.ref = f"A1:L1"
     ws.freeze_panes = "A2"
 
     for row_idx, row in enumerate(rows, 2):
@@ -126,6 +134,10 @@ async def export_excel(req: Request):
             row.get("pkg_dims", ""),
             row.get("pkg_weight", ""),
             row.get("pkg_volume", ""),
+            row.get("price", ""),
+            row.get("image_url", ""),
+            row.get("ean_gtin", ""),
+            row.get("components", ""),
         ]
         for col_idx, val in enumerate(values, 1):
             cell = ws.cell(row=row_idx, column=col_idx, value=val)
@@ -141,9 +153,8 @@ async def export_excel(req: Request):
 
     output = io.BytesIO()
     wb.save(output)
-    output.seek(0)
-    return StreamingResponse(
-        output,
+    return Response(
+        content=output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=packaging_data.xlsx"},
     )
